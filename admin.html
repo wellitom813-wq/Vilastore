@@ -51,15 +51,36 @@ button:disabled{opacity:.6;cursor:wait}
 <div class="card">
 <button id="sair" class="secondary" type="button">Sair</button>
 <button id="atualizar" class="secondary" type="button">Atualizar anúncios</button>
+
 <h2 id="tituloForm">Cadastrar anúncio</h2>
+
 <form id="formAnuncio">
 <input id="id" type="hidden">
-<label>Título da conta<input id="titulo" maxlength="120" required></label>
-<label>Centro de Vila (CV)<input id="cv" maxlength="30" placeholder="Ex.: CV16" required></label>
-<label>Descrição<textarea id="descricao" rows="4" maxlength="5000"></textarea></label>
-<label>Preço (R$)<input id="preco" type="number" min="0" step="0.01" required></label>
-<label>Nome do vendedor<input id="vendedor" maxlength="100" value="Vila Store" required></label>
-<label>Link da imagem<input id="imagem_url" type="url" placeholder="https://..."></label>
+
+<label>Título da conta
+<input id="titulo" maxlength="120" required>
+</label>
+
+<label>Centro de Vila (CV)
+<input id="cv" maxlength="30" placeholder="Ex.: CV16" required>
+</label>
+
+<label>Descrição
+<textarea id="descricao" rows="4" maxlength="5000"></textarea>
+</label>
+
+<label>Preço (R$)
+<input id="preco" type="number" min="0" step="0.01" required>
+</label>
+
+<label>Nome do vendedor
+<input id="vendedor" maxlength="100" value="Vila Store" required>
+</label>
+
+<label>Link da imagem
+<input id="imagem_url" type="url" placeholder="https://...">
+</label>
+
 <label>Status
 <select id="status">
 <option value="disponivel">Disponível</option>
@@ -67,11 +88,14 @@ button:disabled{opacity:.6;cursor:wait}
 <option value="vendido">Vendido</option>
 </select>
 </label>
+
 <label><input id="publicado" type="checkbox" style="width:auto"> Publicar no site</label>
+
 <button id="botaoSalvar" type="submit">Salvar anúncio</button>
 <button id="cancelar" class="secondary" type="button">Limpar formulário</button>
 </form>
 </div>
+
 <div class="card">
 <h2>Anúncios cadastrados</h2>
 <div id="lista">Carregando anúncios...</div>
@@ -86,18 +110,30 @@ const SUPABASE_URL = "https://aijmzyebtrogcpuxygyi.supabase.co";
 const SUPABASE_PUBLIC_KEY = "sb_publishable_gmiq0mnUw8hyEKUAVRvvAw_ZYOCbO_m";
 
 const $ = id => document.getElementById(id);
+
 const mensagem = texto => {
   $("mensagem").textContent = texto || "";
 };
 
+window.addEventListener("error", event => {
+  mensagem("ERRO NO SCRIPT: " + (event.message || "Erro desconhecido."));
+});
+
+window.addEventListener("unhandledrejection", event => {
+  const erro = event.reason;
+  mensagem("ERRO INESPERADO: " + (erro?.message || String(erro)));
+});
+
 if (!window.supabase) {
-  mensagem("Erro: o sistema de acesso não carregou. Verifique sua conexão e atualize a página.");
+  mensagem("A biblioteca Supabase não carregou. Verifique a conexão e atualize a página.");
   throw new Error("Biblioteca Supabase não carregada.");
 }
 
-if (!SUPABASE_PUBLIC_KEY ||
-    SUPABASE_PUBLIC_KEY === "COLE_AQUI_SUA_CHAVE_PUBLICA_ATUAL") {
-  mensagem("Configure a chave pública do Supabase no código antes de usar o painel.");
+if (
+  !SUPABASE_PUBLIC_KEY ||
+  SUPABASE_PUBLIC_KEY === "sb_publishable_gmiq0mnUw8hyEKUAVRvvAw_ZYOCbO_m"
+) {
+  mensagem("Configure a chave pública do Supabase antes de utilizar o painel.");
   throw new Error("Chave pública não configurada.");
 }
 
@@ -108,19 +144,24 @@ const supabase = window.supabase.createClient(
 
 function escapar(valor) {
   return String(valor ?? "").replace(/[&<>"']/g, c => ({
-    "&":"&amp;", "<":"&lt;", ">":"&gt;",
-    '"':"&quot;", "'":"&#39;"
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#39;"
   })[c]);
 }
 
 function dinheiro(valor) {
   return Number(valor).toLocaleString("pt-BR", {
-    style:"currency", currency:"BRL"
+    style:"currency",
+    currency:"BRL"
   });
 }
 
 async function verificarAdmin() {
   const { data, error } = await supabase.auth.getSession();
+
   if (error) throw error;
 
   if (!data.session) {
@@ -129,45 +170,76 @@ async function verificarAdmin() {
     return false;
   }
 
+  mensagem("Sessão encontrada. Verificando administrador...");
+
   const { data: autorizado, error: erroAdmin } =
     await supabase.rpc("is_vila_admin");
 
   if (erroAdmin) {
-    throw new Error("Erro ao verificar administrador: " + erroAdmin.message);
+    throw new Error("Falha ao verificar administrador: " + erroAdmin.message);
   }
 
   if (autorizado !== true) {
-    await supabase.auth.signOut();
     $("login").classList.remove("hidden");
     $("painel").classList.add("hidden");
-    throw new Error("Usuário sem autorização de administrador. Confira se o UID correto está cadastrado na tabela admins do Supabase.");
+    throw new Error("O usuário conectado não está autorizado como administrador. Confira o UID cadastrado na tabela admins.");
   }
 
   $("login").classList.add("hidden");
   $("painel").classList.remove("hidden");
+
+  mensagem("Administrador confirmado. Carregando anúncios...");
   await carregarAnuncios();
+
+  mensagem("Painel carregado.");
   return true;
 }
 
 $("formLogin").addEventListener("submit", async e => {
   e.preventDefault();
+
   const botao = $("botaoLogin");
   botao.disabled = true;
-  mensagem("Verificando acesso...");
+  mensagem("Etapa 1/3: verificando login...");
 
   try {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: $("email").value.trim(),
       password: $("senha").value
     });
 
-    if (error) throw error;
+    if (error) {
+      throw new Error("Falha no login: " + error.message);
+    }
+
+    if (!data.user) {
+      throw new Error("O Supabase não retornou um usuário após o login.");
+    }
+
+    mensagem("Etapa 2/3: login aceito. Verificando autorização...");
+
+    const { data: autorizado, error: erroAdmin } =
+      await supabase.rpc("is_vila_admin");
+
+    if (erroAdmin) {
+      throw new Error("Login aceito, mas a verificação de administrador falhou: " + erroAdmin.message);
+    }
+
+    if (autorizado !== true) {
+      throw new Error("Login aceito, mas este usuário não está autorizado como administrador na tabela admins.");
+    }
+
+    mensagem("Etapa 3/3: administrador confirmado. Abrindo painel...");
 
     $("senha").value = "";
-    await verificarAdmin();
+    $("login").classList.add("hidden");
+    $("painel").classList.remove("hidden");
+
+    await carregarAnuncios();
     mensagem("Acesso autorizado. Painel carregado.");
+
   } catch (err) {
-    mensagem("Não foi possível abrir o painel:\n" + (err.message || "Erro desconhecido."));
+    mensagem("NÃO FOI POSSÍVEL ABRIR O PAINEL:\n" + (err.message || String(err)));
   } finally {
     botao.disabled = false;
   }
@@ -215,6 +287,7 @@ async function carregarAnuncios() {
         $("status").value = a.status;
         $("publicado").checked = a.publicado;
         $("tituloForm").textContent = "Editar anúncio";
+
         mensagem("Editando anúncio: " + a.titulo);
         window.scrollTo({top:0, behavior:"smooth"});
       });
@@ -235,10 +308,11 @@ async function carregarAnuncios() {
           mensagem("Anúncio excluído.");
           await carregarAnuncios();
         } catch (err) {
-          mensagem("Erro ao excluir: " + err.message);
+          mensagem("Erro ao excluir anúncio: " + err.message);
         }
       });
     });
+
   } catch (err) {
     $("lista").textContent = "Erro ao carregar anúncios: " + err.message;
     mensagem("Erro ao carregar anúncios: " + err.message);
@@ -247,11 +321,13 @@ async function carregarAnuncios() {
 
 $("formAnuncio").addEventListener("submit", async e => {
   e.preventDefault();
+
   const botao = $("botaoSalvar");
   botao.disabled = true;
   mensagem("Salvando anúncio...");
 
   const id = $("id").value;
+
   const anuncio = {
     titulo: $("titulo").value.trim(),
     cv: $("cv").value.trim(),
@@ -274,6 +350,7 @@ $("formAnuncio").addEventListener("submit", async e => {
     mensagem(id ? "Anúncio atualizado!" : "Anúncio cadastrado!");
     limparFormulario();
     await carregarAnuncios();
+
   } catch (err) {
     mensagem("Erro ao salvar anúncio: " + err.message);
   } finally {
@@ -303,6 +380,7 @@ $("sair").addEventListener("click", async () => {
     $("painel").classList.add("hidden");
     $("login").classList.remove("hidden");
     mensagem("Você saiu do painel.");
+
   } catch (err) {
     mensagem("Erro ao sair: " + err.message);
   }
