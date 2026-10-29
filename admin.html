@@ -1,1 +1,125 @@
 
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#09090c">
+  <title>Administração | Vila Store</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; padding: 24px;
+      display: grid; place-items: center;
+      background: #09090c; color: #f7f7fa;
+      font-family: Arial, sans-serif;
+    }
+    .box {
+      width: 100%; max-width: 410px; padding: 25px;
+      background: #15151b; border: 1px solid #303039;
+      border-radius: 16px;
+    }
+    h1 { margin: 0 0 8px; font-size: 26px; }
+    h1 span { color: #ed2638; }
+    p { color: #aaaab5; line-height: 1.5; font-size: 14px; }
+    label { display: block; margin: 17px 0 7px; font-size: 13px; }
+    input, button {
+      width: 100%; padding: 14px; border-radius: 8px;
+      font-size: 15px;
+    }
+    input {
+      background: #0d0d12; color: white;
+      border: 1px solid #363640;
+    }
+    button {
+      margin-top: 20px; border: 0; cursor: pointer;
+      background: #ed2638; color: white; font-weight: bold;
+    }
+    button:disabled { opacity: .6; }
+    #msg { overflow-wrap: anywhere; }
+    a { color: #ff7b88; }
+  </style>
+</head>
+<body>
+  <main class="box">
+    <h1>VILA <span>STORE</span></h1>
+    <p>Painel administrativo privado. Entre com a conta autorizada.</p>
+
+    <form id="login">
+      <label for="email">E-mail administrativo</label>
+      <input id="email" type="email" autocomplete="username"
+        required placeholder="Seu e-mail">
+
+      <label for="password">Senha</label>
+      <input id="password" type="password"
+        autocomplete="current-password" required placeholder="Sua senha">
+
+      <button id="submit" type="submit">Entrar no painel</button>
+    </form>
+
+    <p id="msg" role="status"></p>
+    <p><a href="/">Voltar para a loja</a></p>
+  </main>
+
+  <script type="module">
+    import { createClient } from
+      "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+    // Configuração pública do projeto: preencher na próxima etapa.
+    const SUPABASE_URL = "COLE_A_PROJECT_URL";
+    const SUPABASE_PUBLIC_KEY = "COLE_A_CHAVE_PUBLICA";
+
+    const msg = document.getElementById("msg");
+    const form = document.getElementById("login");
+    const btn = document.getElementById("submit");
+
+    if (
+      !SUPABASE_URL.startsWith("https://") ||
+      SUPABASE_URL.includes("COLE_A_") ||
+      SUPABASE_PUBLIC_KEY.includes("COLE_A_") ||
+      !SUPABASE_PUBLIC_KEY
+    ) {
+      msg.textContent =
+        "Configuração pendente. O painel ainda não está conectado.";
+      btn.disabled = true;
+    } else {
+      const supabase = createClient(
+        SUPABASE_URL,
+        SUPABASE_PUBLIC_KEY
+      );
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        btn.disabled = true;
+        msg.textContent = "Verificando acesso...";
+
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: document.getElementById("email").value.trim(),
+            password: document.getElementById("password").value
+          });
+
+          if (error) throw error;
+
+          const { data: autorizado, error: erroPermissao } =
+            await supabase.rpc("is_vila_admin");
+
+          if (erroPermissao || autorizado !== true) {
+            await supabase.auth.signOut();
+            throw new Error("Esta conta não está autorizada a administrar a loja.");
+          }
+
+          msg.textContent =
+            "Login confirmado. A próxima etapa ativará o gerenciamento de anúncios.";
+        } catch (error) {
+          msg.textContent = error.message ||
+            "Não foi possível validar o acesso.";
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
+
